@@ -1,0 +1,5 @@
+{
+  "name": "Ranobe Reader",
+  "description": "A mobile-first light novel reader powered by Gemini. Discover titles, download content for offline reading, and enjoy a distraction-free reading experience.",
+  "requestFramePermissions": []
+}
