@@ -6,11 +6,11 @@ let ai: GoogleGenAI | null = null;
 
 const getAiClient = () => {
   if (!ai) {
-    // process.env.API_KEY is replaced by Vite at build time
-    // env.d.ts ensures TypeScript knows about it
-    const apiKey = process.env.API_KEY;
+    // process.env.API_KEY is replaced by Vite at build time via define
+    // We casts it to string to satisfy TS, though define handles the replacement
+    const apiKey = process.env.API_KEY as string;
+    
     if (!apiKey || apiKey === 'MISSING_API_KEY' || apiKey === '') {
-      // Return null so we can handle it gracefully in the calling function
       return null;
     }
     ai = new GoogleGenAI({ apiKey });
@@ -64,9 +64,14 @@ export const searchNovels = async (query: string): Promise<Novel[]> => {
 
     let jsonStr = response.text || "[]";
     
-    // Clean markdown formatting if present (e.g. ```json ... ```)
-    if (jsonStr.startsWith("```")) {
-        jsonStr = jsonStr.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "");
+    // Robust cleanup: remove markdown and find the array
+    jsonStr = jsonStr.replace(/```\w*\n?/g, '').replace(/```/g, '').trim();
+    
+    // Extract strictly the JSON array part if there's surrounding text
+    const firstBracket = jsonStr.indexOf('[');
+    const lastBracket = jsonStr.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1) {
+        jsonStr = jsonStr.substring(firstBracket, lastBracket + 1);
     }
 
     const data = JSON.parse(jsonStr);
@@ -74,14 +79,19 @@ export const searchNovels = async (query: string): Promise<Novel[]> => {
     // Enrich with random cover URLs since the model can't browse for real images reliably without grounding tools
     return data.map((item: any, index: number) => ({
       ...item,
-      coverUrl: `https://picsum.photos/300/450?random=${Math.floor(Math.random() * 1000)}`,
+      coverUrl: `https://picsum.photos/300/450?random=${Math.floor(Math.random() * 1000) + index}`,
       lastUpdated: new Date().toISOString()
     }));
 
   } catch (error: any) {
     console.error("Gemini Search Error:", error);
     if (error.message === "API_KEY_MISSING") {
-        throw new Error("API Key is missing. Please check your Vercel settings.");
+        throw new Error("API_KEY_MISSING");
+    }
+    // Handle JSON parse errors gracefully
+    if (error instanceof SyntaxError) {
+        console.error("Failed to parse JSON:", error);
+        throw new Error("AI response was malformed. Please try again.");
     }
     throw new Error("Failed to fetch novels. The AI service might be busy.");
   }
@@ -116,9 +126,7 @@ export const downloadChapterContent = async (novelTitle: string, chapterNumber: 
     let text = response.text || "Failed to download chapter content.";
     
     // Remove markdown code blocks if the model accidentally wrapped the whole text
-    if (text.startsWith("```")) {
-        text = text.replace(/^```(markdown|md)?\s*/i, "").replace(/\s*```$/, "");
-    }
+    text = text.replace(/^```(markdown|md)?\s*/i, "").replace(/\s*```$/, "");
 
     return text;
   } catch (error: any) {

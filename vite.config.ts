@@ -2,14 +2,21 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
-  // Use '.' as current directory instead of process.cwd() to avoid TS type error
-  const env = loadEnv(mode, '.', '');
+  // Load env file based on `mode` in the current working directory.
+  // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
+  const env = loadEnv(mode, process.cwd(), '');
+
+  // Prioritize variables in this order to ensure we catch the key on Vercel:
+  // 1. VITE_API_KEY (Standard Vite convention)
+  // 2. API_KEY (Standard backend/Vercel convention)
+  // 3. System process.env fallbacks
+  const apiKey = env.VITE_API_KEY || env.API_KEY || process.env.VITE_API_KEY || process.env.API_KEY || '';
+
   return {
     plugins: [react()],
-    // This allows process.env.API_KEY to work in the browser code
-    // It checks the loaded .env file OR the system process.env (Vercel)
     define: {
-      'process.env.API_KEY': JSON.stringify(process.env.API_KEY || env.API_KEY || '')
+      // Expose the resolved key to the client code
+      'process.env.API_KEY': JSON.stringify(apiKey),
     },
     build: {
       outDir: 'dist',

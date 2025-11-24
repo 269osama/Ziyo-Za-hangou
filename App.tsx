@@ -81,7 +81,11 @@ function App() {
       }
     } catch (err: any) {
       console.error("Search failed", err);
-      setError(err.message || "Failed to search novels. Please check your API Key.");
+      if (err.message === "API_KEY_MISSING") {
+         setError("API Key is missing from configuration.");
+      } else {
+         setError(err.message || "Failed to search novels. The AI service might be busy.");
+      }
     } finally {
       setIsSearching(false);
     }
@@ -310,7 +314,14 @@ function App() {
                     <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
                         <p className="text-red-800 text-sm font-medium">{error}</p>
                         {error.includes("API Key") && (
-                            <p className="text-red-600 text-xs mt-1">Please ensure you have added your API Key in the deployment settings.</p>
+                            <div className="mt-2 text-xs text-red-600 text-left bg-white/50 p-2 rounded">
+                                <p className="font-bold">Troubleshooting:</p>
+                                <ol className="list-decimal ml-4 mt-1 space-y-1">
+                                    <li>Check your Vercel Project Settings</li>
+                                    <li>Ensure your variable is named <code>API_KEY</code> or <code>VITE_API_KEY</code></li>
+                                    <li>Redeploy the project after changing settings</li>
+                                </ol>
+                            </div>
                         )}
                     </div>
                   )}
