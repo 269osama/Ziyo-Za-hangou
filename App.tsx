@@ -43,9 +43,13 @@ function App() {
 
   // Load library from local storage on mount
   useEffect(() => {
-    const savedLib = localStorage.getItem('my_library');
-    if (savedLib) {
-      setLibrary(JSON.parse(savedLib));
+    try {
+      const savedLib = localStorage.getItem('my_library');
+      if (savedLib) {
+        setLibrary(JSON.parse(savedLib));
+      }
+    } catch (e) {
+      console.error("Failed to load library", e);
     }
   }, []);
 
@@ -69,7 +73,12 @@ function App() {
     
     try {
       const results = await searchNovels(searchQuery);
-      setSearchResults(results);
+      if (results && results.length > 0) {
+        setSearchResults(results);
+      } else {
+        // If results is empty array but no error thrown
+        setError("No novels found for this query. Try a more general term.");
+      }
     } catch (err: any) {
       console.error("Search failed", err);
       setError(err.message || "Failed to search novels. Please check your API Key.");
@@ -111,11 +120,13 @@ function App() {
           };
 
           setLibrary(prev => [newItem, ...prev]);
+          // Optional: Vibrate on success
+          if (navigator.vibrate) navigator.vibrate(50);
       } catch (e) {
           alert("Storage full! Please delete some books.");
       }
-    } catch (err) {
-      alert("Failed to download chapter. Please try again.");
+    } catch (err: any) {
+      alert(`Download failed: ${err.message}`);
     } finally {
         setDownloadingIds(prev => {
             const next = new Set(prev);
@@ -166,10 +177,10 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 text-gray-900 select-none">
+    <div className="flex flex-col h-screen bg-gray-50 text-gray-900 select-none overflow-hidden">
       
       {/* Top Navigation - Updated to match Blue style */}
-      <header className="bg-blue-600 px-4 py-3 sticky top-0 z-10 shadow-md">
+      <header className="bg-blue-600 px-4 py-3 sticky top-0 z-10 shadow-md safe-top">
         <div className="flex items-center justify-between max-w-2xl mx-auto">
           <div className="flex items-center gap-3 text-white">
              <div className="bg-white/20 p-1.5 rounded-lg backdrop-blur-sm">
@@ -196,7 +207,7 @@ function App() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto pb-20 no-scrollbar">
+      <main className="flex-1 overflow-y-auto pb-20 no-scrollbar touch-pan-y">
         <div className="max-w-2xl mx-auto p-4">
           
           {/* LIBRARY VIEW */}
@@ -299,7 +310,7 @@ function App() {
                     <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
                         <p className="text-red-800 text-sm font-medium">{error}</p>
                         {error.includes("API Key") && (
-                            <p className="text-red-600 text-xs mt-1">Please configure your Google Gemini API Key in the deployment settings.</p>
+                            <p className="text-red-600 text-xs mt-1">Please ensure you have added your API Key in the deployment settings.</p>
                         )}
                     </div>
                   )}
@@ -322,6 +333,9 @@ function App() {
                                             key={genre}
                                             onClick={() => {
                                                 setSearchQuery(`${genre} light novels`);
+                                                // Trigger search manually since state update is async in a handler
+                                                // Ideally we'd use a useEffect or specific handler, 
+                                                // but for this simple app, we'll let the user click search or just set query
                                             }}
                                             className="text-xs bg-gray-50 text-gray-700 px-3 py-1.5 rounded-full border border-gray-200 font-medium hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors"
                                           >

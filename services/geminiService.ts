@@ -8,7 +8,8 @@ const getAiClient = () => {
   if (!ai) {
     const apiKey = process.env.API_KEY;
     if (!apiKey || apiKey === 'MISSING_API_KEY' || apiKey === '') {
-      throw new Error("API Key is missing or not configured.");
+      // Return null so we can handle it gracefully in the calling function
+      return null;
     }
     ai = new GoogleGenAI({ apiKey });
   }
@@ -21,6 +22,10 @@ const getAiClient = () => {
 export const searchNovels = async (query: string): Promise<Novel[]> => {
   try {
     const client = getAiClient();
+    if (!client) {
+        throw new Error("API_KEY_MISSING");
+    }
+
     const model = 'gemini-2.5-flash';
     const prompt = `
       You are a light novel database assistant.
@@ -55,7 +60,14 @@ export const searchNovels = async (query: string): Promise<Novel[]> => {
       },
     });
 
-    const data = JSON.parse(response.text || "[]");
+    let jsonStr = response.text || "[]";
+    
+    // Clean markdown formatting if present (e.g. ```json ... ```)
+    if (jsonStr.startsWith("```")) {
+        jsonStr = jsonStr.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "");
+    }
+
+    const data = JSON.parse(jsonStr);
     
     // Enrich with random cover URLs since the model can't browse for real images reliably without grounding tools
     return data.map((item: any, index: number) => ({
@@ -66,7 +78,10 @@ export const searchNovels = async (query: string): Promise<Novel[]> => {
 
   } catch (error: any) {
     console.error("Gemini Search Error:", error);
-    throw new Error(error.message || "Failed to fetch novels.");
+    if (error.message === "API_KEY_MISSING") {
+        throw new Error("API Key is missing. Please check your Vercel settings.");
+    }
+    throw new Error("Failed to fetch novels. The AI service might be busy.");
   }
 };
 
@@ -76,6 +91,8 @@ export const searchNovels = async (query: string): Promise<Novel[]> => {
 export const downloadChapterContent = async (novelTitle: string, chapterNumber: number): Promise<string> => {
   try {
     const client = getAiClient();
+    if (!client) throw new Error("API_KEY_MISSING");
+
     const model = 'gemini-2.5-flash';
     const prompt = `
       Write the full content for Chapter ${chapterNumber} of the light novel "${novelTitle}".
@@ -95,8 +112,11 @@ export const downloadChapterContent = async (novelTitle: string, chapterNumber: 
     });
 
     return response.text || "Failed to download chapter content.";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Download Error:", error);
+    if (error.message === "API_KEY_MISSING") {
+        throw new Error("API Key is missing.");
+    }
     throw new Error("Failed to download content. Please check your connection or API limit.");
   }
 };
