@@ -7,14 +7,10 @@ let ai: GoogleGenAI | null = null;
 const getAiClient = () => {
   if (!ai) {
     const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-      console.warn("API_KEY is missing from environment variables");
-      // Prevent crash by using a dummy key if missing, 
-      // though API calls will fail gracefully later
-      ai = new GoogleGenAI({ apiKey: 'MISSING_API_KEY' }); 
-    } else {
-      ai = new GoogleGenAI({ apiKey });
+    if (!apiKey || apiKey === 'MISSING_API_KEY' || apiKey === '') {
+      throw new Error("API Key is missing or not configured.");
     }
+    ai = new GoogleGenAI({ apiKey });
   }
   return ai;
 };
@@ -68,9 +64,9 @@ export const searchNovels = async (query: string): Promise<Novel[]> => {
       lastUpdated: new Date().toISOString()
     }));
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Search Error:", error);
-    return [];
+    throw new Error(error.message || "Failed to fetch novels.");
   }
 };
 
@@ -101,6 +97,6 @@ export const downloadChapterContent = async (novelTitle: string, chapterNumber: 
     return response.text || "Failed to download chapter content.";
   } catch (error) {
     console.error("Gemini Download Error:", error);
-    return "# Error\n\nFailed to download content. Please check your internet connection.";
+    throw new Error("Failed to download content. Please check your connection or API limit.");
   }
 };

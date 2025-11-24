@@ -21,12 +21,22 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Skip cross-origin requests or non-GET requests for basic caching
-  if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
+  const url = new URL(event.request.url);
+  
+  // Allow caching of external assets critical for UI (Tailwind, Fonts, Images)
+  const isSameOrigin = url.origin === self.location.origin;
+  const isExternalAsset = url.hostname.includes('tailwindcss.com') || 
+                          url.hostname.includes('googleapis.com') || 
+                          url.hostname.includes('gstatic.com') ||
+                          url.hostname.includes('picsum.photos');
+
+  // Skip if it's not a GET request or if it's a random API call we don't want to cache
+  if (event.request.method !== 'GET' || (!isSameOrigin && !isExternalAsset)) {
       return;
   }
 
   // Network First, fall back to Cache strategy for main content to ensure freshness
+  // Stale-while-revalidate for assets could be better, but Network First is safer for data consistency
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {

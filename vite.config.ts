@@ -7,8 +7,9 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     // This allows process.env.API_KEY to work in the browser code
+    // It checks the loaded .env file OR the system process.env (Vercel)
     define: {
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || '')
+      'process.env.API_KEY': JSON.stringify(process.env.API_KEY || env.API_KEY || '')
     },
     build: {
       outDir: 'dist',

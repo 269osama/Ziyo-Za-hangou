@@ -10,6 +10,8 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Novel[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // Download/Active Reading State
   const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
@@ -56,17 +58,24 @@ function App() {
     e?.preventDefault();
     if (!searchQuery.trim()) return;
     if (!isOnline) {
-        alert("You are offline. Connect to the internet to search.");
+        setError("You are offline. Connect to the internet to search.");
         return;
     }
     
     setIsSearching(true);
-    // Clear previous results to show loading state clearly
+    setError(null);
+    setHasSearched(true);
     setSearchResults([]); 
     
-    const results = await searchNovels(searchQuery);
-    setSearchResults(results);
-    setIsSearching(false);
+    try {
+      const results = await searchNovels(searchQuery);
+      setSearchResults(results);
+    } catch (err: any) {
+      console.error("Search failed", err);
+      setError(err.message || "Failed to search novels. Please check your API Key.");
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const handleDownload = async (novel: Novel) => {
@@ -86,23 +95,27 @@ function App() {
     setDownloadingIds(prev => new Set(prev).add(novel.id));
 
     // 1. Generate content via Gemini (simulating download)
-    const content = await downloadChapterContent(novel.title, 1);
-    
-    // 2. Save content to LocalStorage
     try {
-        localStorage.setItem(`novel_content_${novel.id}_ch1`, content);
-        
-        const newItem: LibraryItem = {
-            ...novel,
-            downloaded: true,
-            lastReadChapter: 0,
-            totalChapters: 100, // Mock
-            savedAt: Date.now()
-        };
+      const content = await downloadChapterContent(novel.title, 1);
+      
+      // 2. Save content to LocalStorage
+      try {
+          localStorage.setItem(`novel_content_${novel.id}_ch1`, content);
+          
+          const newItem: LibraryItem = {
+              ...novel,
+              downloaded: true,
+              lastReadChapter: 0,
+              totalChapters: 100, // Mock
+              savedAt: Date.now()
+          };
 
-        setLibrary(prev => [newItem, ...prev]);
-    } catch (e) {
-        alert("Storage full! Please delete some books.");
+          setLibrary(prev => [newItem, ...prev]);
+      } catch (e) {
+          alert("Storage full! Please delete some books.");
+      }
+    } catch (err) {
+      alert("Failed to download chapter. Please try again.");
     } finally {
         setDownloadingIds(prev => {
             const next = new Set(prev);
@@ -281,8 +294,18 @@ function App() {
                     </button>
                   </form>
 
+                  {/* Error Message */}
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+                        <p className="text-red-800 text-sm font-medium">{error}</p>
+                        {error.includes("API Key") && (
+                            <p className="text-red-600 text-xs mt-1">Please configure your Google Gemini API Key in the deployment settings.</p>
+                        )}
+                    </div>
+                  )}
+
                   {/* Suggestions / Initial State */}
-                  {!isSearching && searchResults.length === 0 && (
+                  {!isSearching && !hasSearched && searchResults.length === 0 && (
                       <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
                           <div className="flex items-start gap-4">
                               <div className="p-3 bg-blue-50 rounded-full text-blue-600">
@@ -308,6 +331,14 @@ function App() {
                                   </div>
                               </div>
                           </div>
+                      </div>
+                  )}
+
+                  {/* No Results State */}
+                  {!isSearching && hasSearched && searchResults.length === 0 && !error && (
+                      <div className="text-center py-10">
+                          <p className="text-gray-500 text-sm">No novels found matching "{searchQuery}".</p>
+                          <p className="text-xs text-gray-400 mt-1">Try a different keyword.</p>
                       </div>
                   )}
 
