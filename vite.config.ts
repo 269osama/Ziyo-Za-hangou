@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     // This allows process.env.API_KEY to work in the browser code
     define: {
-      'process.env.API_KEY': JSON.stringify(env.API_KEY)
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || '')
     },
     build: {
       outDir: 'dist',

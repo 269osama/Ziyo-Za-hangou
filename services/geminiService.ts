@@ -1,16 +1,30 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Novel } from "../types";
 
-// Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Lazy initialization to prevent top-level crashes on module load
+let ai: GoogleGenAI | null = null;
+
+const getAiClient = () => {
+  if (!ai) {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      console.warn("API_KEY is missing from environment variables");
+      // Prevent crash by using a dummy key if missing, 
+      // though API calls will fail gracefully later
+      ai = new GoogleGenAI({ apiKey: 'MISSING_API_KEY' }); 
+    } else {
+      ai = new GoogleGenAI({ apiKey });
+    }
+  }
+  return ai;
+};
 
 /**
  * Searches for light novels based on a query using Gemini's knowledge base.
- * Since we cannot scrape real-time pirate sites safely/legally in this demo,
- * we use Gemini to recommend real titles and generate metadata.
  */
 export const searchNovels = async (query: string): Promise<Novel[]> => {
   try {
+    const client = getAiClient();
     const model = 'gemini-2.5-flash';
     const prompt = `
       You are a light novel database assistant.
@@ -22,7 +36,7 @@ export const searchNovels = async (query: string): Promise<Novel[]> => {
       Use https://picsum.photos/300/450?random=[random_number] for the coverUrl.
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: model,
       contents: prompt,
       config: {
@@ -62,10 +76,10 @@ export const searchNovels = async (query: string): Promise<Novel[]> => {
 
 /**
  * Generates the content of a chapter.
- * This simulates the "Download" process by asking Gemini to write/recall the story.
  */
 export const downloadChapterContent = async (novelTitle: string, chapterNumber: number): Promise<string> => {
   try {
+    const client = getAiClient();
     const model = 'gemini-2.5-flash';
     const prompt = `
       Write the full content for Chapter ${chapterNumber} of the light novel "${novelTitle}".
@@ -79,7 +93,7 @@ export const downloadChapterContent = async (novelTitle: string, chapterNumber: 
       - If you don't know the exact real content, write a highly plausible creative continuation or opening consistent with the genre and title.
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: model,
       contents: prompt,
     });
