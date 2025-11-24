@@ -6,6 +6,8 @@ let ai: GoogleGenAI | null = null;
 
 const getAiClient = () => {
   if (!ai) {
+    // process.env.API_KEY is replaced by Vite at build time
+    // env.d.ts ensures TypeScript knows about it
     const apiKey = process.env.API_KEY;
     if (!apiKey || apiKey === 'MISSING_API_KEY' || apiKey === '') {
       // Return null so we can handle it gracefully in the calling function
@@ -111,7 +113,14 @@ export const downloadChapterContent = async (novelTitle: string, chapterNumber: 
       contents: prompt,
     });
 
-    return response.text || "Failed to download chapter content.";
+    let text = response.text || "Failed to download chapter content.";
+    
+    // Remove markdown code blocks if the model accidentally wrapped the whole text
+    if (text.startsWith("```")) {
+        text = text.replace(/^```(markdown|md)?\s*/i, "").replace(/\s*```$/, "");
+    }
+
+    return text;
   } catch (error: any) {
     console.error("Gemini Download Error:", error);
     if (error.message === "API_KEY_MISSING") {
