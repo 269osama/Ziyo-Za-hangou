@@ -1,16 +1,15 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Novel } from "../types";
+import { Novel, ChapterMetadata } from "../types";
 
 // Lazy initialization to prevent top-level crashes on module load
 let ai: GoogleGenAI | null = null;
 
 const getAiClient = () => {
   if (!ai) {
-    // process.env.API_KEY is replaced by Vite at build time via define
-    // We casts it to string to satisfy TS, though define handles the replacement
-    const apiKey = process.env.API_KEY as string;
+    const apiKey = process.env.API_KEY;
     
-    if (!apiKey || apiKey === 'MISSING_API_KEY' || apiKey === '') {
+    if (!apiKey) {
+      console.warn("Gemini Service: API Key is missing.");
       return null;
     }
     ai = new GoogleGenAI({ apiKey });
@@ -18,122 +17,248 @@ const getAiClient = () => {
   return ai;
 };
 
+// Helper to clean JSON strings from Markdown
+const cleanJson = (text: string) => {
+    let clean = text.replace(/```\w*\n?/g, '').replace(/```/g, '').trim();
+    const firstBracket = clean.indexOf('[');
+    const lastBracket = clean.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1) {
+        clean = clean.substring(firstBracket, lastBracket + 1);
+    }
+    return clean;
+};
+
 /**
- * Searches for light novels based on a query using Gemini's knowledge base.
+ * Searches for light novels using Google Search grounding to find real covers.
  */
 export const searchNovels = async (query: string): Promise<Novel[]> => {
   try {
     const client = getAiClient();
-    if (!client) {
-        throw new Error("API_KEY_MISSING");
-    }
+    if (!client) throw new Error("API_KEY_MISSING");
 
     const model = 'gemini-2.5-flash';
+    // Improved prompt to ask for stable image sources
     const prompt = `
-      You are a light novel database assistant.
-      User is searching for: "${query}".
-      Return a list of 5 popular or relevant light novels (Japanese, Korean, or Chinese web novels) that match this query.
-      If the query is empty, return 5 currently trending light novels.
+      Search for the light novel series: "${query}".
+      Find 4 distinct results.
+      For each, find:
+      1. Precise Title
+      2. Author Name
+      3. A brief 1-sentence description
+      4. Status (Ongoing/Completed)
+      5. A direct URL to the Cover Image. PREFER URLs from: Wikimedia, Wikipedia, Amazon, or GoodReads. Avoid URLs that look like temporary session links.
       
-      Generate a valid JSON response.
-      Use https://picsum.photos/300/450?random=[random_number] for the coverUrl.
+      Return the result strictly as a JSON array with these keys:
+      id (generate a random string), title, author, description, coverUrl, tags (array of strings), status.
     `;
 
     const response = await client.models.generateContent({
       model: model,
       contents: prompt,
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING },
-              title: { type: Type.STRING },
-              author: { type: Type.STRING },
-              description: { type: Type.STRING },
-              tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-              status: { type: Type.STRING, enum: ["Ongoing", "Completed"] },
-            },
-            required: ["id", "title", "author", "description", "tags", "status"],
-          },
-        },
+        tools: [{ googleSearch: {} }],
       },
     });
 
     let jsonStr = response.text || "[]";
-    
-    // Robust cleanup: remove markdown and find the array
-    jsonStr = jsonStr.replace(/```\w*\n?/g, '').replace(/```/g, '').trim();
-    
-    // Extract strictly the JSON array part if there's surrounding text
-    const firstBracket = jsonStr.indexOf('[');
-    const lastBracket = jsonStr.lastIndexOf(']');
-    if (firstBracket !== -1 && lastBracket !== -1) {
-        jsonStr = jsonStr.substring(firstBracket, lastBracket + 1);
-    }
+    jsonStr = cleanJson(jsonStr);
 
     const data = JSON.parse(jsonStr);
     
-    // Enrich with random cover URLs since the model can't browse for real images reliably without grounding tools
+    // Validation and Fallback for broken images
     return data.map((item: any, index: number) => ({
       ...item,
-      coverUrl: `https://picsum.photos/300/450?random=${Math.floor(Math.random() * 1000) + index}`,
-      lastUpdated: new Date().toISOString()
+      id: item.id || `novel_${Date.now()}_${index}`,
+      tags: item.tags || ['Novel'],
+      // Basic check if it looks like a URL
+      coverUrl: (item.coverUrl && item.coverUrl.startsWith('http')) 
+        ? item.coverUrl 
+        : `https://via.placeholder.com/300x450.png?text=${encodeURIComponent(item.title)}`
     }));
 
   } catch (error: any) {
     console.error("Gemini Search Error:", error);
-    if (error.message === "API_KEY_MISSING") {
-        throw new Error("API_KEY_MISSING");
-    }
-    // Handle JSON parse errors gracefully
-    if (error instanceof SyntaxError) {
-        console.error("Failed to parse JSON:", error);
-        throw new Error("AI response was malformed. Please try again.");
-    }
-    throw new Error("Failed to fetch novels. The AI service might be busy.");
+    if (error.message === "API_KEY_MISSING") throw new Error("API_KEY_MISSING");
+    throw new Error("Failed to search. Please try again.");
   }
 };
 
 /**
- * Generates the content of a chapter.
+ * Returns a static list of highly rated novels to ensure instant load and valid images.
+ * AI fetching is too slow and unreliable for the "Home" screen first impression.
  */
-export const downloadChapterContent = async (novelTitle: string, chapterNumber: number): Promise<string> => {
-  try {
+export const getFeaturedNovels = async (): Promise<Novel[]> => {
+    // Static curated list with stable Wikimedia/high-quality URLs
+    const curated: Novel[] = [
+        {
+            id: 'sl_001',
+            title: 'Solo Leveling',
+            author: 'Chugong',
+            description: 'From the weakest hunter to the strongest.',
+            status: 'Completed',
+            tags: ['Action', 'Fantasy'],
+            coverUrl: 'https://upload.wikimedia.org/wikipedia/en/9/9a/Solo_Leveling_Webtoon_cover.png'
+        },
+        {
+            id: 'mt_001',
+            title: 'Mushoku Tensei',
+            author: 'Rifujin na Magonote',
+            description: 'A jobless man reincarnates in a fantasy world.',
+            status: 'Completed',
+            tags: ['Isekai', 'Drama'],
+            coverUrl: 'https://upload.wikimedia.org/wikipedia/en/c/c4/Mushoku_Tensei_light_novel_volume_1_cover.jpg'
+        },
+        {
+            id: 'overlord_001',
+            title: 'Overlord',
+            author: 'Kugane Maruyama',
+            description: 'A skeletal wizard conquers a new world.',
+            status: 'Ongoing',
+            tags: ['Dark Fantasy', 'Game'],
+            coverUrl: 'https://upload.wikimedia.org/wikipedia/en/5/50/Overlord_volume_1_cover.jpg'
+        },
+        {
+            id: 'slime_001',
+            title: 'That Time I Got Reincarnated as a Slime',
+            author: 'Fuse',
+            description: 'A salaryman dies and wakes up as a slime.',
+            status: 'Ongoing',
+            tags: ['Isekai', 'Fantasy'],
+            coverUrl: 'https://upload.wikimedia.org/wikipedia/en/8/87/Tensei_Shitara_Slime_Datta_Ken_volume_1_cover.jpg'
+        },
+        {
+            id: 'rezero_001',
+            title: 'Re:Zero - Starting Life in Another World',
+            author: 'Tappei Nagatsuki',
+            description: 'Subaru Natsuki can return by death.',
+            status: 'Ongoing',
+            tags: ['Psychological', 'Thriller'],
+            coverUrl: 'https://upload.wikimedia.org/wikipedia/en/e/eb/Re-Zero_kara_Hajimeru_Isekai_Seikatsu_light_novel_volume_1_cover.jpg'
+        },
+        {
+            id: 'cote_001',
+            title: 'Classroom of the Elite',
+            author: 'Shōgo Kinugasa',
+            description: 'Students compete for points in a cutthroat school.',
+            status: 'Ongoing',
+            tags: ['Psychological', 'School'],
+            coverUrl: 'https://upload.wikimedia.org/wikipedia/en/3/36/Classroom_of_the_Elite_volume_1_cover.jpg'
+        },
+        {
+            id: 'sao_001',
+            title: 'Sword Art Online',
+            author: 'Reki Kawahara',
+            description: 'Trapped in a VRMMORPG where death is real.',
+            status: 'Ongoing',
+            tags: ['Sci-Fi', 'Adventure'],
+            coverUrl: 'https://upload.wikimedia.org/wikipedia/en/2/20/Sword_Art_Online_Light_Novel_Volume_01.jpg'
+        },
+        {
+            id: 'ngnl_001',
+            title: 'No Game No Life',
+            author: 'Yuu Kamiya',
+            description: 'Siblings conquer a world ruled by games.',
+            status: 'Ongoing',
+            tags: ['Fantasy', 'Game'],
+            coverUrl: 'https://upload.wikimedia.org/wikipedia/en/3/3d/No_Game_No_Life_vol._1.png'
+        }
+    ];
+
+    // Wrap in promise to match interface
+    return Promise.resolve(curated);
+};
+
+/**
+ * Generates a list of chapters for a novel.
+ */
+export const getChapterList = async (novelTitle: string): Promise<ChapterMetadata[]> => {
     const client = getAiClient();
     if (!client) throw new Error("API_KEY_MISSING");
 
-    const model = 'gemini-2.5-flash';
+    // We ask the model to generate a plausible list of chapters
     const prompt = `
-      Write the full content for Chapter ${chapterNumber} of the light novel "${novelTitle}".
-      
-      Style guide:
-      - Write in the style of a professional light novel translation.
-      - 1500-2000 words.
-      - Use dialogue heavily.
-      - Include a chapter title at the top in Markdown H1 format (# Title).
-      - Use standard Markdown for formatting.
-      - If you don't know the exact real content, write a highly plausible creative continuation or opening consistent with the genre and title.
+        Generate a list of the first 20 chapter titles for the light novel "${novelTitle}".
+        Return a JSON array of objects with keys: "chapterNumber" (number) and "title" (string).
+        Example: [{"chapterNumber": 1, "title": "Prologue"}, ...]
     `;
 
     const response = await client.models.generateContent({
-      model: model,
-      contents: prompt,
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
     });
 
-    let text = response.text || "Failed to download chapter content.";
-    
-    // Remove markdown code blocks if the model accidentally wrapped the whole text
-    text = text.replace(/^```(markdown|md)?\s*/i, "").replace(/\s*```$/, "");
+    const data = JSON.parse(cleanJson(response.text || "[]"));
+    return data.map((ch: any) => ({
+        id: ch.chapterNumber.toString(),
+        novelId: novelTitle, // simplistic linking
+        title: ch.title,
+        chapterNumber: ch.chapterNumber
+    }));
+};
 
-    return text;
-  } catch (error: any) {
-    console.error("Gemini Download Error:", error);
-    if (error.message === "API_KEY_MISSING") {
-        throw new Error("API Key is missing.");
-    }
-    throw new Error("Failed to download content. Please check your connection or API limit.");
+/**
+ * Generates the content of a specific chapter.
+ */
+export const downloadChapterContent = async (novelTitle: string, chapterNumber: number, chapterTitle: string): Promise<string> => {
+  const client = getAiClient();
+  if (!client) throw new Error("API_KEY_MISSING");
+
+  const prompt = `
+    Write the full content for Chapter ${chapterNumber}: "${chapterTitle}" of the light novel "${novelTitle}".
+    
+    Style guide:
+    - Write in the style of a professional light novel translation.
+    - 1500-2500 words.
+    - Use dialogue heavily.
+    - Use standard Markdown.
+    - Do NOT include the chapter title at the beginning, just the story text.
+  `;
+
+  const response = await client.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: prompt,
+  });
+
+  let text = response.text || "";
+  text = text.replace(/^```(markdown|md)?\s*/i, "").replace(/\s*```$/, "");
+  
+  if (!text || text.length < 100) {
+      throw new Error("Generated content too short or empty.");
   }
+
+  return text;
+};
+
+/**
+ * Generates an image visualizing the chapter summary.
+ */
+export const generateChapterImage = async (chapterContent: string): Promise<string> => {
+    const client = getAiClient();
+    if (!client) throw new Error("API_KEY_MISSING");
+
+    // 1. First, summarize the scene to get a clean prompt
+    const summaryPrompt = `Describe a single, epic visual scene that represents the climax or summary of this text in 50 words: \n\n${chapterContent.substring(0, 5000)}`;
+    
+    const summaryResponse = await client.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: summaryPrompt
+    });
+    const sceneDescription = summaryResponse.text;
+
+    // 2. Generate the image
+    const response = await client.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+            parts: [{ text: `Anime style illustration, high quality light novel cover art style, cinematic lighting, 8k resolution: ${sceneDescription}` }]
+        }
+    });
+
+    // Extract base64
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+            return `data:image/png;base64,${part.inlineData.data}`;
+        }
+    }
+    throw new Error("Failed to generate image");
 };

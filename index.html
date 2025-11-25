@@ -7,20 +7,30 @@
     
     <!-- PWA Settings -->
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#2563eb" />
+    <meta name="theme-color" content="#0f172a" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Ranobe" />
     
     <!-- Styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap" rel="stylesheet">
     <style>
+      :root {
+        --neon-blue: #3b82f6;
+        --neon-cyan: #06b6d4;
+        --glass-bg: rgba(15, 23, 42, 0.7);
+        --glass-border: rgba(255, 255, 255, 0.1);
+      }
       body {
         font-family: 'Inter', sans-serif;
-        background-color: #f3f4f6;
+        background-color: #0f172a; /* Slate 900 */
+        color: #f8fafc;
         -webkit-font-smoothing: antialiased;
         overscroll-behavior-y: none;
+      }
+      .font-tech {
+        font-family: 'Orbitron', sans-serif;
       }
       .font-serif {
         font-family: 'Merriweather', serif;
@@ -32,8 +42,32 @@
         -ms-overflow-style: none;
         scrollbar-width: none;
       }
+      
+      /* Futuristic Animations */
+      @keyframes fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fade-in {
+        animation: fade-in 0.4s ease-out forwards;
+      }
+      
+      @keyframes pulse-glow {
+        0%, 100% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.2); }
+        50% { box-shadow: 0 0 20px rgba(6, 182, 212, 0.5); }
+      }
+      .animate-glow {
+        animation: pulse-glow 3s infinite;
+      }
+
+      .glass-panel {
+        background: var(--glass-bg);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid var(--glass-border);
+      }
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
     "react": "https://aistudiocdn.com/react@^19.2.0",

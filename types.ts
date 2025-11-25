@@ -9,25 +9,33 @@ export interface Novel {
   lastUpdated?: string;
 }
 
-export interface Chapter {
-  id: string;
+export interface ChapterMetadata {
+  id: string; // usually just the number string
   novelId: string;
   title: string;
-  content: string; // Markdown or plain text
   chapterNumber: number;
 }
 
 export interface LibraryItem extends Novel {
-  downloaded: boolean;
-  lastReadChapter: number;
-  totalChapters: number; // Simulated count
+  downloaded: boolean; // true if the NOVEL metadata is saved
+  totalChapters: number; 
   savedAt: number;
+  chapters: ChapterMetadata[]; // List of available chapters
+  lastReadChapterId?: string;
 }
 
 export type ViewState = 'library' | 'search' | 'reader';
 
 export interface ReaderSettings {
   fontSize: number;
-  fontFamily: 'serif' | 'sans';
-  theme: 'light' | 'sepia' | 'dark';
+  fontFamily: 'serif' | 'sans' | 'mono';
+  theme: 'future' | 'light' | 'sepia' | 'dark';
+  lineHeight: number;
+  autoGenerateImage: boolean;
+}
+
+export interface ToastMessage {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info' | 'loading';
 }
